@@ -1477,21 +1477,29 @@ function initStressCanvas() {
   stressCtx = stressCanvas.getContext('2d', { willReadFrequently: true });
   stressOffCanvas = document.createElement('canvas');
   stressOffCtx = stressOffCanvas.getContext('2d', { willReadFrequently: true });
+  stressLastW = 0; stressLastH = 0;
   resizeStressCanvas();
 }
+
+// 缓存当前尺寸，避免每帧设置 canvas.width/height 导致清空
+let stressLastW = 0, stressLastH = 0;
 
 function resizeStressCanvas() {
   if (!stressCanvas) return { w: 0, h: 0 };
   const wrap = document.getElementById('stressCanvasWrap');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2); // 限制 DPR 避免过度
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = wrap.clientWidth;
   const h = wrap.clientHeight;
-  stressCanvas.width = stressOffCanvas.width = w * dpr;
-  stressCanvas.height = stressOffCanvas.height = h * dpr;
-  stressCanvas.style.width = stressOffCanvas.style.width = w + 'px';
-  stressCanvas.style.height = stressOffCanvas.style.height = h + 'px';
-  stressCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  stressOffCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 仅当尺寸真正变化时才重新设置（避免清空 Canvas）
+  if (w !== stressLastW || h !== stressLastH) {
+    stressLastW = w; stressLastH = h;
+    stressCanvas.width = stressOffCanvas.width = w * dpr;
+    stressCanvas.height = stressOffCanvas.height = h * dpr;
+    stressCanvas.style.width = stressOffCanvas.style.width = w + 'px';
+    stressCanvas.style.height = stressOffCanvas.style.height = h + 'px';
+    stressCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    stressOffCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
   return { w, h };
 }
 
@@ -1626,17 +1634,33 @@ function drawPerlinNoise(ctx, w, h, time) {
   ctx.putImageData(imgData, 0, 0);
 }
 
+// 🔑 备份 Canvas：用于在渲染出错时恢复，避免画面黑屏
+let stressBackupCanvas = null;
+let stressBackupCtx = null;
+
 function renderStressFrame(time) {
   if (!stressRunning) return;
+  try {
   const dims = resizeStressCanvas();
   const preset = getPreset();
   const { w, h } = dims;
+  if (w === 0 || h === 0) { stressAnimId = requestAnimationFrame(renderStressFrame); return; }
   const cx = w / 2, cy = h / 2;
   const ctx = stressCtx;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  // 半透明覆盖产生拖尾
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fillRect(0, 0, w, h);
+  // 确保备份 Canvas 存在且尺寸正确
+  if (!stressBackupCanvas) {
+    stressBackupCanvas = document.createElement('canvas');
+    stressBackupCtx = stressBackupCanvas.getContext('2d');
+  }
+  if (stressBackupCanvas.width !== stressCanvas.width || stressBackupCanvas.height !== stressCanvas.height) {
+    stressBackupCanvas.width = stressCanvas.width;
+    stressBackupCanvas.height = stressCanvas.height;
+  }
+
+  // 🔑 先备份当前主 Canvas 画面（如果渲染中途出错，可恢复）
+  stressBackupCtx.drawImage(stressCanvas, 0, 0);
 
   // 粒子同步
   while (stressParticles.length < preset.particles) {
@@ -1656,6 +1680,10 @@ function renderStressFrame(time) {
 
   // 更新重力井
   for (const well of stressWells) well.update(time);
+
+  // 半透明覆盖产生拖尾
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(0, 0, w, h);
 
   // 🔥 多图层渲染到离屏 Canvas，再合成
   for (let layer = 0; layer < preset.layers; layer++) {
@@ -1708,7 +1736,6 @@ function renderStressFrame(time) {
 
     // 🔥 粒子渲染（含重力井和邻居交互）
     if (preset.neighbor > 0) {
-      // 为每个粒子随机选邻居
       const pCount = stressParticles.length;
       for (let i = 0; i < pCount; i++) {
         const p = stressParticles[i];
@@ -1732,7 +1759,6 @@ function renderStressFrame(time) {
       stressOffCtx.fillStyle = 'hsla(' + p.hue + ', ' + p.saturation + '%, ' + p.lightness + '%, ' + alpha + ')';
       stressOffCtx.fill();
 
-      // 多层光晕
       if (preset.bloom >= 2) {
         stressOffCtx.beginPath();
         stressOffCtx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
@@ -1788,7 +1814,7 @@ function renderStressFrame(time) {
     ctx.globalAlpha = 1;
   }
 
-  // 🔥 全屏像素级图像处理（通道扭曲 + 边缘检测 + 对比度增强）
+  // 🔥 全屏像素级图像处理
   if (preset.pixelOps >= 1) {
     try {
       const div = Math.max(1, 6 - preset.pixelOps);
@@ -1797,13 +1823,11 @@ function renderStressFrame(time) {
       const imgData = ctx.getImageData(0, 0, sampleW, sampleH);
       const d = imgData.data;
       const len = d.length;
-      // 通道扭曲 + 对比度增强 + Sobel边缘检测
       for (let i = 0; i < len; i += 4) {
         const r = d[i], g = d[i + 1], b = d[i + 2];
         d[i] = Math.min(255, Math.abs(r - g) * 2);
         d[i + 1] = Math.min(255, Math.abs(g - b) * 2);
         d[i + 2] = Math.min(255, Math.abs(b - r) * 2);
-        // 增强对比度
         const avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
         const factor = avg > 128 ? 1.3 : 0.7;
         d[i] = Math.min(255, d[i] * factor);
@@ -1844,14 +1868,6 @@ function renderStressFrame(time) {
     ctx.globalAlpha = 1;
   }
 
-  // 屏幕震动（强度 >= 9）
-  if (stressIntensity >= 9) {
-    const shake = stressIntensity >= 10 ? 4 : 2;
-    ctx.save();
-    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-    ctx.restore();
-  }
-
   // FPS
   stressFrames++;
   stressTotalFrames++;
@@ -1867,6 +1883,16 @@ function renderStressFrame(time) {
     updateStressMetrics();
   }
   stressAnimId = requestAnimationFrame(renderStressFrame);
+  } catch(e) {
+    // 🔑 渲染出错时恢复备份画面，避免黑屏
+    if (stressBackupCtx && stressBackupCanvas && stressCanvas) {
+      const ctx = stressCtx;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      ctx.clearRect(0, 0, stressCanvas.width / dpr, stressCanvas.height / dpr);
+      ctx.drawImage(stressBackupCanvas, 0, 0);
+    }
+    stressAnimId = requestAnimationFrame(renderStressFrame);
+  }
 }
 
 function updateStressMetrics() {
@@ -2031,6 +2057,7 @@ function stopCPUWorkers() {
 // ========== CPU 模式可视化渲染（热力图 + 芯片 + 活动条 + 实时数据）==========
 function renderCPUFrame(time) {
   if (!stressRunning) return;
+  try {
   const dims = resizeStressCanvas();
   const { w, h } = dims;
   const ctx = stressCtx;
@@ -2214,6 +2241,7 @@ function renderCPUFrame(time) {
   }
 
   stressAnimId = requestAnimationFrame(renderCPUFrame);
+  } catch(e) { stressAnimId = requestAnimationFrame(renderCPUFrame); }
 }
 
 // ========== 控制 ==========

@@ -1818,9 +1818,9 @@ function renderStressFrame(time) {
   if (preset.fractal >= 5) {
     const mw = Math.floor(w / Math.max(1, 8 - preset.fractal));
     const mh = Math.floor(h / Math.max(1, 8 - preset.fractal));
-    drawMandelbrot(ctx, mw, mh, -0.7 + Math.sin(time * 0.0003) * 0.4, 0, 1.5 + Math.cos(time * 0.0004) * 0.6, time);
+    drawMandelbrot(stressOffCtx, mw, mh, -0.7 + Math.sin(time * 0.0003) * 0.4, 0, 1.5 + Math.cos(time * 0.0004) * 0.6, time);
     ctx.globalAlpha = 0.35;
-    ctx.drawImage(stressCanvas, 0, 0, mw, mh, 0, 0, w, h);
+    ctx.drawImage(stressOffCanvas, 0, 0, mw, mh, 0, 0, w, h);
     ctx.globalAlpha = 1;
   }
 
@@ -1828,17 +1828,19 @@ function renderStressFrame(time) {
   if (preset.fractal >= 8) {
     const jw = Math.floor(w / 4);
     const jh = Math.floor(h / 4);
-    drawJuliaSet(ctx, jw, jh, time);
+    drawJuliaSet(stressOffCtx, jw, jh, time);
     ctx.globalAlpha = 0.25;
-    ctx.drawImage(stressCanvas, 0, 0, jw, jh, 0, 0, w, h);
+    ctx.drawImage(stressOffCanvas, 0, 0, jw, jh, 0, 0, w, h);
     ctx.globalAlpha = 1;
   }
 
   // 🔥 Perlin 噪声覆盖（强度 >= 9）
   if (preset.pixelOps >= 5) {
-    drawPerlinNoise(ctx, Math.floor(w / 3), Math.floor(h / 3), time);
+    const nw = Math.floor(w / 3);
+    const nh = Math.floor(h / 3);
+    drawPerlinNoise(stressOffCtx, nw, nh, time);
     ctx.globalAlpha = 0.15;
-    ctx.drawImage(stressCanvas, 0, 0, Math.floor(w / 3), Math.floor(h / 3), 0, 0, w, h);
+    ctx.drawImage(stressOffCanvas, 0, 0, nw, nh, 0, 0, w, h);
     ctx.globalAlpha = 1;
   }
 

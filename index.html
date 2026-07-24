@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>实时系统监控仪表盘</title>
+<style>
+  :root {
+    --bg: #06080d;
+    --card-bg: #0d1117;
+    --card-border: #1a2332;
+    --card-hover: #1e2d3d;
+    --text: #e6edf3;
+    --text-secondary: #7d8590;
+    --text-tertiary: #484f58;
+    --accent-cpu: #58a6ff;
+    --accent-mem: #bc8cff;
+    --accent-net: #3fb950;
+    --accent-fps: #d29922;
+    --accent-battery: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --green: #3fb950;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --cyan: #39d2c0;
+    --radius: 14px;
+    --gap: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(88,166,255,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(188,140,255,0.04) 0%, transparent 50%);
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #21262d; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #30363d; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 30px 0 10px;
+    position: relative;
+  }
+  .header h1 {
+    font-size: clamp(1.4rem, 3vw, 1.8rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #58a6ff 0%, #bc8cff 50%, #39d2c0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s ease-in-out infinite;
+    background-size: 200% 200%;
+  }
+  @keyframes shimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .header .subtitle {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    opacity: 0.8;
+  }
+
+  /* Status Bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    padding: 8px 16px;
+    background: #0d1117;
+    border: 1px solid #1a2332;
+    border-radius: 50px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+    box-shadow: 0 0 8px rgba(63,185,80,0.5);
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.5); }
+  }
+  .status-text {
+    font-size: 0.78rem;
+    color: var(--green);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .status-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Dashboard Grid */
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--gap);
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+
+  /* Card */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    animation: cardIn 0.5s ease-out both;
+  }
+  .card:nth-child(1) { animation-delay: 0.05s; }
+  .card:nth-child(2) { animation-delay: 0.10s; }
+  .card:nth-child(3) { animation-delay: 0.15s; }
+  .card:nth-child(4) { animation-delay: 0.20s; }
+  .card:nth-child(5) { animation-delay: 0.25s; }
+  .card:nth-child(6) { animation-delay: 0.30s; }
+  .card:nth-child(7) { animation-delay: 0.35s; }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card:hover {
+    border-color: var(--card-hover);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .card-icon {
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    backdrop-filter: blur(4px);
+  }
+  .card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .card-subtitle {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+
+  /* Gauge */
+  .gauge-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .gauge-ring {
+    position: relative;
+    width: 96px; height: 96px;
+    flex-shrink: 0;
+  }
+  .gauge-ring svg {
+    transform: rotate(-90deg);
+    width: 100%; height: 100%;
+  }
+  .gauge-ring .bg {
+    fill: none;
+    stroke: #1a2332;
+    stroke-width: 7;
+  }
+  .gauge-ring .fg {
+    fill: none;
+    stroke-width: 7;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.6s ease;
+  }
+  .gauge-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .gauge-center .val {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.3s;
+  }
+  .gauge-center .unit {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+  .gauge-info {
+    flex: 1;
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .gauge-info .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .gauge-info .row:last-child { border-bottom: none; }
+  .gauge-info .lbl { color: var(--text-secondary); }
+  .gauge-info .val2 {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+
+  /* Chart */
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 170px;
+    margin-top: 12px;
+  }
+  .chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+  /* Info Grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .info-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 9px 11px;
+    transition: background 0.2s;
+  }
+  .info-item:hover { background: rgba(255,255,255,0.04); }
+  .info-item .lbl {
+    color: var(--text-secondary);
+    font-size: 0.66rem;
+    margin-bottom: 3px;
+  }
+  .info-item .inf {
+    font-weight: 600;
+    font-size: 0.78rem;
+    word-break: break-all;
+    color: var(--text);
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .badge-green { background: rgba(63,185,80,0.15); color: #3fb950; }
+  .badge-yellow { background: rgba(210,153,34,0.15); color: #d29922; }
+  .badge-red { background: rgba(248,81,73,0.15); color: #f85149; }
+  .badge-blue { background: rgba(88,166,255,0.15); color: #58a6ff; }
+  .badge-purple { background: rgba(188,140,255,0.15); color: #bc8cff; }
+
+  /* Full/Half width */
+  .full-width { grid-column: 1 / -1; }
+
+  /* Loading skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, #1a2332 25%, #212a3a 50%, #1a2332 75%);
+    background-size: 200% 100%;
+    animation: skeleton-load 1.5s ease-in-out infinite;
+    border-radius: 4px;
+  }
+  @keyframes skeleton-load {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .dashboard { grid-template-columns: 1fr; }
+    body { padding: 12px; }
+    .card { padding: 16px 14px; border-radius: 12px; }
+    .gauge-ring { width: 80px; height: 80px; }
+    .gauge-center .val { font-size: 1.2rem; }
+    .chart-wrap { height: 140px; }
+    .info-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 480px) {
+    body { padding: 8px; }
+    .header { padding: 16px 0 4px; }
+    .gauge-row { gap: 12px; }
+    .gauge-ring { width: 72px; height: 72px; }
+    .gauge-center .val { font-size: 1.1rem; }
+    .chart-wrap { height: 120px; }
+    .gauge-info { min-width: unset; }
+    .info-grid { grid-template-columns: 1fr; }
+    .card { padding: 14px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>实时系统监控仪表盘</h1>
+  <div class="subtitle">CPU · 内存 · 网络 · 帧率 · 电池 · 屏幕 · 设备</div>
+</div>
+
+<div class="status-bar">
+  <div class="status-dot" id="statusDot"></div>
+  <span class="status-text" id="statusText">监控运行中</span>
+  <span class="status-time" id="updateTime">--:--:--</span>
+</div>
+
+<div class="dashboard">
+
+  <!-- ===== CPU ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(88,166,255,0.12);color:var(--accent-cpu);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </div>
+      <div>
+        <div class="card-title">CPU 处理器</div>
+        <div class="card-subtitle" id="cpuModel">检测中...</div>
+      </div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle class="fg" id="cpuCircle" cx="50" cy="50" r="42" stroke="var(--accent-cpu)" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="val" id="cpuPercent" style="color:var(--accent-cpu)">--</span>
+          <span class="unit">%</span>
+        </div>
+      </div>
+      <div class="gauge-info">
+        <div class="row"><span class="lbl">逻辑核心</span><span class="val2" id="cpuCores">--</span></div>
+        <div class="row"><span class="lbl">架构</span><span class="val2" id="cpuArch">--</span></div>
+        <div class="row"><span class="lbl">负载等级</span><span class="val2" id="cpuLoad">--</span></div>
+        <div class="row"><span class="lbl">线程空闲率</span><span class="val2" id="cpuIdle">--</span></div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+  </div>
+
+  <!-- ===== 内存 ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(188,140,255,0.12);color:var(--accent-mem);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v16M8 8h8M8 12h6M8 16h4"/></svg>
+      </div>
+      <div>
+        <div class="card-title">内存 Memory</div>
+        <div class="card-subtitle" id="memSubtitle">检测中...</div>
+      </div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle class="fg" id="memCircle" cx="50" cy="50" r="42" stroke="var(--accent-mem)" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="val" id="memPercent" style="color:var(--accent-mem)">--</span>
+          <span class="unit">%</span>
+        </div>
+      </div>
+      <div class="gauge-info">
+        <div class="row"><span class="lbl">已用</span><span class="val2" id="memUsed">--</span></div>
+        <div class="row"><span class="lbl">总量</span><span class="val2" id="memTotal">--</span></div>
+        <div class="row"><span class="lbl">可用</span><span class="val2" id="memAvail">--</span></div>
+        <div class="row"><span class="lbl">JS 堆限制</span><span class="val2" id="memJSLimit">--</span></div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+  </div>
+
+  <!-- ===== 网络 ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(63,185,80,0.12);color:var(--accent-net);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      </div>
+      <div>
+        <div class="card-title">网络 Network</div>
+        <div class="card-subtitle" id="netSubtitle">检测中...</div>
+      </div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle class="fg" id="netCircle" cx="50" cy="50" r="42" stroke="var(--accent-net)" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="val" id="netSpeed" style="color:var(--accent-net)">--</span>
+          <span class="unit">Mbps</span>
+        </div>
+      </div>
+      <div class="gauge-info">
+        <div class="row"><span class="lbl">网络类型</span><span class="val2" id="netType">--</span></div>
+        <div class="row"><span class="lbl">下行带宽</span><span class="val2" id="netDown">--</span></div>
+        <div class="row"><span class="lbl">RTT 延迟</span><span class="val2" id="netRtt">--</span></div>
+        <div class="row"><span class="lbl">流量节省</span><span class="val2" id="netSaver">--</span></div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="netChart"></canvas></div>
+  </div>
+
+  <!-- ===== FPS ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(210,153,34,0.12);color:var(--accent-fps);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </div>
+      <div>
+        <div class="card-title">屏幕帧率 FPS</div>
+        <div class="card-subtitle" id="fpsSubtitle">实时渲染帧率监测</div>
+      </div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle class="fg" id="fpsCircle" cx="50" cy="50" r="42" stroke="var(--accent-fps)" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="val" id="fpsValue" style="color:var(--accent-fps)">--</span>
+          <span class="unit">FPS</span>
+        </div>
+      </div>
+      <div class="gauge-info">
+        <div class="row"><span class="lbl">平均帧率</span><span class="val2" id="fpsAvg">--</span></div>
+        <div class="row"><span class="lbl">最低帧率</span><span class="val2" id="fpsMin">--</span></div>
+        <div class="row"><span class="lbl">最高帧率</span><span class="val2" id="fpsMax">--</span></div>
+        <div class="row"><span class="lbl">帧时间</span><span class="val2" id="fpsFrameTime">--</span></div>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="fpsChart"></canvas></div>
+  </div>
+
+  <!-- ===== 电池 ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(63,185,80,0.12);color:var(--accent-battery);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="18" height="12" rx="2"/><line x1="23" y1="10" x2="23" y2="14"/><line x1="7" y1="10" x2="7" y2="14"/><line x1="11" y1="10" x2="11" y2="14"/></svg>
+      </div>
+      <div>
+        <div class="card-title">电池 Battery</div>
+        <div class="card-subtitle" id="batterySubtitle">检测中...</div>
+      </div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-ring">
+        <svg viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle class="fg" id="batteryCircle" cx="50" cy="50" r="42" stroke="var(--accent-battery)" stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="val" id="batteryLevel" style="color:var(--accent-battery)">--</span>
+          <span class="unit">%</span>
+        </div>
+      </div>
+      <div class="gauge-info">
+        <div class="row"><span class="lbl">充电状态</span><span class="val2" id="batteryCharging">--</span></div>
+        <div class="row"><span class="lbl">充满剩余</span><span class="val2" id="batteryChargeTime">--</span></div>
+        <div class="row"><span class="lbl">放电剩余</span><span class="val2" id="batteryDischargeTime">--</span></div>
+        <div class="row"><span class="lbl">状态</span><span class="val2" id="batteryStatus">--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 屏幕 ===== -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(88,166,255,0.12);color:var(--accent-cpu);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div>
+        <div class="card-title">屏幕显示 Screen</div>
+        <div class="card-subtitle">显示参数详情</div>
+      </div>
+    </div>
+    <div class="info-grid">
+      <div class="info-item"><div class="lbl">分辨率</div><div class="inf" id="scrResolution">--</div></div>
+      <div class="info-item"><div class="lbl">可用区域</div><div class="inf" id="scrAvail">--</div></div>
+      <div class="info-item"><div class="lbl">色深</div><div class="inf" id="scrDepth">--</div></div>
+      <div class="info-item"><div class="lbl">设备像素比</div><div class="inf" id="scrRatio">--</div></div>
+      <div class="info-item"><div class="lbl">屏幕方向</div><div class="inf" id="scrOrientation">--</div></div>
+      <div class="info-item"><div class="lbl">刷新率</div><div class="inf" id="scrRefresh">--</div></div>
+      <div class="info-item"><div class="lbl">触摸支持</div><div class="inf" id="scrTouch">--</div></div>
+      <div class="info-item"><div class="lbl">窗口尺寸</div><div class="inf" id="scrWindow">--</div></div>
+    </div>
+  </div>
+
+  <!-- ===== 设备信息 ===== -->
+  <div class="card full-width">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(188,140,255,0.12);color:var(--accent-mem);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+      </div>
+      <div>
+        <div class="card-title">设备信息 Device</div>
+        <div class="card-subtitle">系统与浏览器环境详情</div>
+      </div>
+    </div>
+    <div class="info-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+      <div class="info-item"><div class="lbl">操作系统</div><div class="inf" id="devPlatform">--</div></div>
+      <div class="info-item"><div class="lbl">浏览器</div><div class="inf" id="devBrowser">--</div></div>
+      <div class="info-item"><div class="lbl">语言</div><div class="inf" id="devLang">--</div></div>
+      <div class="info-item"><div class="lbl">时区</div><div class="inf" id="devTz">--</div></div>
+      <div class="info-item"><div class="lbl">在线状态</div><div class="inf" id="devOnline">--</div></div>
+      <div class="info-item"><div class="lbl">Cookie</div><div class="inf" id="devCookie">--</div></div>
+      <div class="info-item"><div class="lbl">Do Not Track</div><div class="inf" id="devDnt">--</div></div>
+      <div class="info-item"><div class="lbl">WebGL 渲染器</div><div class="inf" id="devWebgl">--</div></div>
+      <div class="info-item"><div class="lbl">硬件并发数</div><div class="inf" id="devHw">--</div></div>
+      <div class="info-item"><div class="lbl">最大触点数</div><div class="inf" id="devTouch">--</div></div>
+      <div class="info-item"><div class="lbl">页面可见性</div><div class="inf" id="devVisible">--</div></div>
+      <div class="info-item"><div class="lbl">User Agent</div><div class="inf" id="devUa" style="font-size:0.62rem;">--</div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============ 工具函数 ============
+const C = 2 * Math.PI * 42; // 圆周长 ≈ 263.89
+
+function formatBytes(bytes) {
+  if (!bytes || bytes < 0) return '--';
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatTime(seconds) {
+  if (!isFinite(seconds) || seconds <= 0 || seconds === Infinity) return '--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return h + '时' + m + '分';
+  return m + '分' + Math.floor(seconds % 60) + '秒';
+}
+
+// 设置环形仪表（不覆盖颜色，只改 offset）
+function setGaugeOffset(circle, percent, maxVal) {
+  const pct = Math.min(Math.max(percent / (maxVal || 100), 0), 1);
+  circle.style.strokeDashoffset = C * (1 - pct);
+}
+
+// 根据百分比获取颜色
+function getPercentColor(pct) {
+  if (pct < 0.5) return 'var(--green)';
+  if (pct < 0.8) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+// ============ Chart.js 加载检测 ============
+let ChartLib = null;
+let chartsReady = false;
+
+function initCharts() {
+  if (typeof Chart === 'undefined') {
+    // 动态加载 Chart.js
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
+    script.onload = () => { ChartLib = Chart; setupCharts(); };
+    script.onerror = () => { console.warn('Chart.js 加载失败，图表不可用'); };
+    document.head.appendChild(script);
+  } else {
+    ChartLib = Chart;
+    setupCharts();
+  }
+}
+
+const MAX_PTS = 60;
+const chartInstances = {};
+
+function createChart(canvasId, borderColor, bgColor, maxY) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  return new ChartLib(ctx, {
+    type: 'line',
+    data: {
+      labels: Array(MAX_PTS).fill(''),
+      datasets: [{
+        data: Array(MAX_PTS).fill(null),
+        borderColor: borderColor,
+        backgroundColor: bgColor,
+        borderWidth: 1.5,
+        fill: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: borderColor,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: {
+          display: true,
+          max: maxY || undefined,
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#484f58', font: { size: 9 }, maxTicksLimit: 4, padding: 4 },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+}
+
+function pushData(chart, value) {
+  if (!chart) return;
+  const data = chart.data.datasets[0].data;
+  data.push(value);
+  if (data.length > MAX_PTS) data.shift();
+  chart.update('none');
+}
+
+function setupCharts() {
+  chartInstances.cpu = createChart('cpuChart', '#58a6ff', 'rgba(88,166,255,0.08)');
+  chartInstances.mem = createChart('memChart', '#bc8cff', 'rgba(188,140,255,0.08)');
+  chartInstances.net = createChart('netChart', '#3fb950', 'rgba(63,185,80,0.08)');
+  chartInstances.fps = createChart('fpsChart', '#d29922', 'rgba(210,153,34,0.08)', 120);
+  chartsReady = true;
+}
+
+// ============ CPU 监测（非阻塞方式）============
+let cpuHistory = [];
+let cpuIdleTotal = 0;
+let cpuIdleCount = 0;
+
+// 使用 requestIdleCallback 测量真实空闲时间
+let idleStart = 0;
+let measuringIdle = false;
+
+function onIdleCallback(deadline) {
+  if (measuringIdle) {
+    const idleRatio = deadline.timeRemaining() / 50; // 50ms 预算
+    const idlePct = Math.min(100, Math.round(idleRatio * 100));
+    cpuIdleTotal += idlePct;
+    cpuIdleCount++;
+    measuringIdle = false;
+  }
+}
+
+function startIdleMeasure() {
+  measuringIdle = true;
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(onIdleCallback, { timeout: 100 });
+  } else {
+    // 降级：使用 setTimeout 估算
+    const start = performance.now();
+    setTimeout(() => {
+      const elapsed = performance.now() - start;
+      const idlePct = Math.max(0, Math.min(100, Math.round((1 - elapsed / 50) * 100)));
+      cpuIdleTotal += idlePct;
+      cpuIdleCount++;
+      measuringIdle = false;
+    }, 0);
+  }
+}
+
+function updateCPU() {
+  startIdleMeasure();
+
+  let usage = 0;
+  if (cpuIdleCount > 0) {
+    const avgIdle = cpuIdleTotal / cpuIdleCount;
+    usage = Math.max(0, Math.min(100, Math.round(100 - avgIdle)));
+    // 平滑
+    cpuHistory.push(usage);
+    if (cpuHistory.length > 12) cpuHistory.shift();
+    cpuIdleTotal = 0;
+    cpuIdleCount = 0;
+  }
+
+  const smoothUsage = cpuHistory.length > 0
+    ? Math.round(cpuHistory.reduce((a, b) => a + b, 0) / cpuHistory.length)
+    : usage;
+
+  const el = document.getElementById('cpuPercent');
+  el.textContent = smoothUsage;
+  const pct = smoothUsage / 100;
+  const color = pct < 0.5 ? 'var(--green)' : pct < 0.8 ? 'var(--yellow)' : 'var(--red)';
+  el.style.color = color;
+  const circle = document.getElementById('cpuCircle');
+  circle.style.stroke = color;
+  setGaugeOffset(circle, smoothUsage, 100);
+
+  document.getElementById('cpuIdle').textContent = Math.round(100 - smoothUsage) + '%';
+
+  let loadText = '空闲';
+  let loadBadge = 'badge-green';
+  if (smoothUsage > 80) { loadText = '繁忙'; loadBadge = 'badge-red'; }
+  else if (smoothUsage > 50) { loadText = '正常'; loadBadge = 'badge-yellow'; }
+  document.getElementById('cpuLoad').innerHTML = '<span class="badge ' + loadBadge + '">' + loadText + '</span>';
+
+  if (chartsReady && chartInstances.cpu) pushData(chartInstances.cpu, smoothUsage);
+}
+
+// ============ 内存监测 ============
+function updateMemory() {
+  let used = 0, total = 0, limit = 0, percent = 0;
+
+  if (performance.memory) {
+    // Chrome 专用 API
+    used = performance.memory.usedJSHeapSize;
+    total = performance.memory.totalJSHeapSize;
+    limit = performance.memory.jsHeapSizeLimit;
+    percent = Math.round((used / limit) * 100);
+  } else if (performance.measureUserAgentSpecificMemory) {
+    // 较新的 API
+    performance.measureUserAgentSpecificMemory().then(result => {
+      used = result.bytes;
+      total = navigator.deviceMemory ? navigator.deviceMemory * 1024 * 1024 * 1024 : used * 2;
+      limit = total;
+      percent = Math.round((used / limit) * 100);
+      renderMemory(used, total, limit, percent);
+    }).catch(() => renderMemoryFallback());
+    return;
+  } else {
+    renderMemoryFallback();
+    return;
+  }
+
+  renderMemory(used, total, limit, percent);
+}
+
+function renderMemoryFallback() {
+  const dm = navigator.deviceMemory;
+  if (dm) {
+    const total = dm * 1024 * 1024 * 1024;
+    // 使用 performance.now() 估算 JS 堆使用
+    const used = Math.round(total * 0.15); // 保守估计
+    const limit = total;
+    const percent = Math.round((used / limit) * 100);
+    renderMemory(used, total, limit, percent);
+  } else {
+    renderMemory(0, 0, 0, 0);
+  }
+}
+
+function renderMemory(used, total, limit, percent) {
+  const el = document.getElementById('memPercent');
+  if (used === 0 && total === 0) {
+    el.textContent = '--';
+    document.getElementById('memUsed').textContent = '不支持';
+    document.getElementById('memSubtitle').textContent = '当前浏览器不支持内存 API';
+    return;
+  }
+  el.textContent = percent;
+  const pct = percent / 100;
+  const color = pct < 0.5 ? 'var(--green)' : pct < 0.8 ? 'var(--yellow)' : 'var(--red)';
+  el.style.color = color;
+  const circle = document.getElementById('memCircle');
+  circle.style.stroke = color;
+  setGaugeOffset(circle, percent, 100);
+
+  document.getElementById('memUsed').textContent = formatBytes(used);
+  document.getElementById('memTotal').textContent = formatBytes(total);
+  document.getElementById('memAvail').textContent = formatBytes(Math.max(0, limit - used));
+  document.getElementById('memJSLimit').textContent = formatBytes(limit);
+  document.getElementById('memSubtitle').textContent = '已用 ' + formatBytes(used) + ' / ' + formatBytes(limit);
+
+  if (chartsReady && chartInstances.mem) pushData(chartInstances.mem, percent);
+}
+
+// ============ 网络监测 ============
+let netLatencyEstimate = null;
+
+function updateNetwork() {
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+
+  if (conn) {
+    const typeMap = {
+      'wifi': 'Wi-Fi', 'ethernet': '有线以太网', 'cellular': '蜂窝移动',
+      'bluetooth': '蓝牙', 'wimax': 'WiMAX', 'mixed': '混合',
+      'other': '其他', 'unknown': '未知', 'none': '无连接',
+    };
+    const typeLabel = typeMap[conn.type] || conn.type || '未知';
+    const downlink = conn.downlink || 0;
+    const rtt = conn.rtt || 0;
+    const saver = conn.saveData ? '已开启' : '未开启';
+
+    document.getElementById('netType').textContent = typeLabel;
+    document.getElementById('netDown').textContent = downlink.toFixed(1) + ' Mbps';
+    document.getElementById('netSaver').textContent = saver;
+    document.getElementById('netSubtitle').textContent = typeLabel + ' · ' + (conn.effectiveType || '').toUpperCase();
+
+    // RTT 质量
+    let rttBadge = 'badge-green';
+    let rttQuality = '优秀';
+    if (rtt > 150) { rttBadge = 'badge-red'; rttQuality = '较差'; }
+    else if (rtt > 50) { rttBadge = 'badge-yellow'; rttQuality = '一般'; }
+    document.getElementById('netRtt').innerHTML = rtt + ' ms <span class="badge ' + rttBadge + '" style="margin-left:4px;">' + rttQuality + '</span>';
+
+    // 速度仪表
+    const maxSpeed = 100;
+    const speedPct = Math.min(100, (downlink / maxSpeed) * 100);
+    const el = document.getElementById('netSpeed');
+    el.textContent = downlink.toFixed(0);
+    const pct = speedPct / 100;
+    const color = pct < 0.3 ? 'var(--red)' : pct < 0.6 ? 'var(--yellow)' : 'var(--green)';
+    el.style.color = color;
+    const circle = document.getElementById('netCircle');
+    circle.style.stroke = color;
+    setGaugeOffset(circle, speedPct, 100);
+
+    if (chartsReady && chartInstances.net) pushData(chartInstances.net, downlink);
+  } else {
+    document.getElementById('netType').textContent = '检测中';
+    document.getElementById('netSubtitle').textContent = '浏览器不支持 Network Information API';
+    estimateNetworkLatency();
+  }
+}
+
+let latencyPollTimer = null;
+function estimateNetworkLatency() {
+  if (latencyPollTimer) return;
+  const measure = () => {
+    const start = performance.now();
+    fetch(location.href, { method: 'HEAD', cache: 'no-store' }).then(() => {
+      const latency = Math.round(performance.now() - start);
+      netLatencyEstimate = latency;
+      document.getElementById('netRtt').textContent = '≈' + latency + ' ms';
+      document.getElementById('netDown').textContent = '估算中';
+      if (chartsReady && chartInstances.net) pushData(chartInstances.net, latency);
+    }).catch(() => {});
+  };
+  measure();
+  latencyPollTimer = setInterval(measure, 5000);
+}
+
+// ============ FPS 帧率监测 ============
+let fpsFrames = 0;
+let fpsLastTime = performance.now();
+let fpsCurrent = 0;
+let fpsHistory = [];
+let fpsMin = Infinity;
+let fpsMax = 0;
+let fpsSum = 0;
+let fpsCount = 0;
+
+function fpsLoop() {
+  fpsFrames++;
+  const now = performance.now();
+  const elapsed = now - fpsLastTime;
+
+  if (elapsed >= 1000) {
+    fpsCurrent = Math.round((fpsFrames * 1000) / elapsed);
+    fpsFrames = 0;
+    fpsLastTime = now;
+
+    fpsHistory.push(fpsCurrent);
+    fpsSum += fpsCurrent;
+    fpsCount++;
+    if (fpsCurrent < fpsMin) fpsMin = fpsCurrent;
+    if (fpsCurrent > fpsMax) fpsMax = fpsCurrent;
+
+    const avg = fpsCount > 0 ? Math.round(fpsSum / fpsCount) : 0;
+    const frameTime = fpsCurrent > 0 ? (1000 / fpsCurrent).toFixed(1) : '--';
+
+    document.getElementById('fpsValue').textContent = fpsCurrent;
+    document.getElementById('fpsAvg').textContent = avg + ' FPS';
+    document.getElementById('fpsMin').textContent = (fpsMin === Infinity ? '--' : fpsMin + ' FPS');
+    document.getElementById('fpsMax').textContent = fpsMax + ' FPS';
+    document.getElementById('fpsFrameTime').textContent = frameTime + ' ms';
+
+    // 质量
+    let quality = '流畅';
+    let qBadge = 'badge-green';
+    if (fpsCurrent < 30) { quality = '卡顿'; qBadge = 'badge-red'; }
+    else if (fpsCurrent < 55) { quality = '一般'; qBadge = 'badge-yellow'; }
+    document.getElementById('fpsSubtitle').innerHTML = '实时渲染 · <span class="badge ' + qBadge + '">' + quality + '</span>';
+
+    const pct = fpsCurrent / 120;
+    const el = document.getElementById('fpsValue');
+    const color = pct < 0.25 ? 'var(--red)' : pct < 0.5 ? 'var(--yellow)' : 'var(--green)';
+    el.style.color = color;
+    const circle = document.getElementById('fpsCircle');
+    circle.style.stroke = color;
+    setGaugeOffset(circle, fpsCurrent, 120);
+
+    if (chartsReady && chartInstances.fps) pushData(chartInstances.fps, fpsCurrent);
+
+    // 限制历史数据
+    if (fpsHistory.length > 300) {
+      fpsHistory = fpsHistory.slice(-60);
+      fpsSum = fpsHistory.reduce((a, b) => a + b, 0);
+      fpsCount = fpsHistory.length;
+      fpsMin = Math.min(...fpsHistory);
+      fpsMax = Math.max(...fpsHistory);
+    }
+  }
+
+  requestAnimationFrame(fpsLoop);
+}
+
+// ============ 电池监测 ============
+async function updateBattery() {
+  try {
+    if (!navigator.getBattery) {
+      document.getElementById('batteryLevel').textContent = '--';
+      document.getElementById('batteryCharging').textContent = '不支持';
+      document.getElementById('batterySubtitle').textContent = '浏览器不支持 Battery API';
+      return;
+    }
+    const battery = await navigator.getBattery();
+
+    function render() {
+      const level = Math.round(battery.level * 100);
+      const charging = battery.charging;
+
+      document.getElementById('batteryLevel').textContent = level;
+      document.getElementById('batteryCharging').textContent = charging ? '充电中' : '放电中';
+      document.getElementById('batteryChargeTime').textContent = charging ? formatTime(battery.chargingTime) : '--';
+      document.getElementById('batteryDischargeTime').textContent = !charging ? formatTime(battery.dischargingTime) : '--';
+
+      let statusText = '正常';
+      let statusBadge = 'badge-green';
+      if (level <= 15 && !charging) { statusText = '电量过低'; statusBadge = 'badge-red'; }
+      else if (level <= 30 && !charging) { statusText = '电量偏低'; statusBadge = 'badge-yellow'; }
+      document.getElementById('batteryStatus').innerHTML = '<span class="badge ' + statusBadge + '">' + statusText + '</span>';
+
+      const pct = level / 100;
+      const el = document.getElementById('batteryLevel');
+      let color;
+      if (level <= 15 && !charging) color = 'var(--red)';
+      else if (level <= 30 && !charging) color = 'var(--yellow)';
+      else color = 'var(--green)';
+      el.style.color = color;
+      const circle = document.getElementById('batteryCircle');
+      circle.style.stroke = color;
+      setGaugeOffset(circle, level, 100);
+    }
+
+    render();
+    battery.addEventListener('levelchange', render);
+    battery.addEventListener('chargingchange', render);
+  } catch (e) {
+    document.getElementById('batteryLevel').textContent = '--';
+    document.getElementById('batteryCharging').textContent = '不支持';
+    document.getElementById('batterySubtitle').textContent = 'Battery API 不可用';
+  }
+}
+
+// ============ 屏幕信息 ============
+function updateScreenInfo() {
+  document.getElementById('scrResolution').textContent = screen.width + ' x ' + screen.height;
+  document.getElementById('scrAvail').textContent = screen.availWidth + ' x ' + screen.availHeight;
+  document.getElementById('scrDepth').textContent = screen.colorDepth + ' bit';
+  document.getElementById('scrRatio').textContent = window.devicePixelRatio.toFixed(1);
+  document.getElementById('scrWindow').textContent = window.innerWidth + ' x ' + window.innerHeight;
+
+  const orientation = screen.orientation || {};
+  const oriMap = {
+    'portrait-primary': '竖屏(正)',
+    'portrait-secondary': '竖屏(倒)',
+    'landscape-primary': '横屏(正)',
+    'landscape-secondary': '横屏(倒)',
+  };
+  document.getElementById('scrOrientation').textContent = oriMap[orientation.type] || orientation.type || '--';
+
+  // 刷新率检测
+  let refreshText = '--';
+  try {
+    if (orientation.type && orientation.type.includes('landscape')) {
+      refreshText = '60Hz (默认)';
+    }
+  } catch (e) {}
+  document.getElementById('scrRefresh').textContent = refreshText;
+
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  document.getElementById('scrTouch').textContent = hasTouch
+    ? '支持 (' + navigator.maxTouchPoints + ' 点触控)'
+    : '不支持触控';
+}
+
+window.addEventListener('orientationchange', () => setTimeout(updateScreenInfo, 300));
+window.addEventListener('resize', () => {
+  document.getElementById('scrWindow').textContent = window.innerWidth + ' x ' + window.innerHeight;
+});
+
+// ============ 设备信息 ============
+function updateDeviceInfo() {
+  const ua = navigator.userAgent;
+  document.getElementById('devPlatform').textContent = navigator.platform || '--';
+  document.getElementById('devUa').textContent = ua;
+
+  // 浏览器检测
+  let browser = '未知';
+  if (ua.includes('Edg/')) browser = 'Microsoft Edge';
+  else if (ua.includes('Chrome/') && !ua.includes('Edg/')) browser = 'Google Chrome';
+  else if (ua.includes('Safari/') && !ua.includes('Chrome/')) browser = 'Apple Safari';
+  else if (ua.includes('Firefox/')) browser = 'Mozilla Firefox';
+  else if (ua.includes('OPR/') || ua.includes('Opera/')) browser = 'Opera';
+  document.getElementById('devBrowser').textContent = browser;
+
+  document.getElementById('devLang').textContent = navigator.language;
+  try {
+    document.getElementById('devTz').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch (e) {
+    document.getElementById('devTz').textContent = '--';
+  }
+
+  document.getElementById('devOnline').innerHTML = navigator.onLine
+    ? '<span class="badge badge-green">在线</span>'
+    : '<span class="badge badge-red">离线</span>';
+  document.getElementById('devCookie').textContent = navigator.cookieEnabled ? '已启用' : '已禁用';
+  document.getElementById('devDnt').textContent = navigator.doNotTrack || '未设置';
+  document.getElementById('devHw').textContent = navigator.hardwareConcurrency || '--';
+  document.getElementById('devTouch').textContent = navigator.maxTouchPoints || 0;
+  document.getElementById('devVisible').textContent = document.hidden ? '已隐藏' : '可见';
+
+  // WebGL
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      document.getElementById('devWebgl').textContent = debugInfo
+        ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+        : '已隐藏';
+    } else {
+      document.getElementById('devWebgl').textContent = '不支持';
+    }
+  } catch (e) {
+    document.getElementById('devWebgl').textContent = '--';
+  }
+}
+
+window.addEventListener('online', updateDeviceInfo);
+window.addEventListener('offline', updateDeviceInfo);
+document.addEventListener('visibilitychange', () => {
+  document.getElementById('devVisible').textContent = document.hidden ? '已隐藏' : '可见';
+});
+
+// 网络变化监听
+const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+if (conn) {
+  conn.addEventListener('change', updateNetwork);
+}
+
+// ============ 更新时间 ============
+function updateTimeDisplay() {
+  const now = new Date();
+  document.getElementById('updateTime').textContent = now.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+// ============ 主循环 ============
+let tick = 0;
+function mainLoop() {
+  tick++;
+  updateTimeDisplay();
+
+  // CPU & 内存：每秒
+  updateCPU();
+  updateMemory();
+
+  // 网络：每 2 秒
+  if (tick % 2 === 0) updateNetwork();
+
+  // 状态动画
+  if (tick % 5 === 0) {
+    const dot = document.getElementById('statusDot');
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow = '0 0 8px rgba(63,185,80,0.5)';
+  }
+
+  setTimeout(mainLoop, 1000);
+}
+
+// ============ 初始化 ============
+function init() {
+  // CPU 静态信息
+  document.getElementById('cpuCores').textContent = navigator.hardwareConcurrency || '--';
+  document.getElementById('cpuArch').textContent = navigator.platform || '--';
+  document.getElementById('cpuModel').textContent = '逻辑核心: ' + (navigator.hardwareConcurrency || '--');
+
+  // 屏幕
+  updateScreenInfo();
+
+  // 设备
+  updateDeviceInfo();
+
+  // 电池
+  updateBattery();
+
+  // 图表
+  initCharts();
+
+  // FPS
+  requestAnimationFrame(fpsLoop);
+
+  // 主循环
+  mainLoop();
+
+  // 初始更新
+  updateNetwork();
+  updateMemory();
+  updateCPU();
+  updateTimeDisplay();
+}
+
+// 启动
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>

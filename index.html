@@ -1342,6 +1342,9 @@ let stressOffCanvas = null;
 let stressOffCtx = null;
 let stressCpuInterval = null;
 
+// CPU 可视化数据收集
+let cpuVisData = { iterCount: 0, piValue: 0, primeCount: 0, hashVal: 0, lastUpdate: 0 };
+
 // 🔥🔥🔥 10级强度梯度 — 真正的烤机级别 🔥🔥🔥
 // 10级 = 100K粒子 + 重力井 + 邻居交互 + 多层分形 + 全屏像素处理 + 1200x1200矩阵乘法
 const PRESETS = {
@@ -2000,7 +2003,15 @@ function startCPUWorkers() {
   const workerCount = Math.min(preset.workers, navigator.hardwareConcurrency || 8);
   for (let i = 0; i < workerCount; i++) {
     const w = createCPUWorker(preset.matrixSize);
-    w.onmessage = () => {};
+    w.onmessage = function(e) {
+      if (e.data && e.data.done) {
+        cpuVisData.iterCount = e.data.iter || 0;
+        cpuVisData.piValue = e.data.pi || 0;
+        cpuVisData.primeCount = e.data.primeCount || 0;
+        cpuVisData.hashVal = e.data.hash || 0;
+        cpuVisData.lastUpdate = performance.now();
+      }
+    };
     w.postMessage('start');
     stressWorkerIds.push(w);
   }
@@ -2012,6 +2023,195 @@ function stopCPUWorkers() {
     w.terminate();
   }
   stressWorkerIds = [];
+  cpuVisData = { iterCount: 0, piValue: 0, primeCount: 0, hashVal: 0, lastUpdate: 0 };
+}
+
+// ========== CPU 模式可视化渲染（热力图 + 芯片 + 活动条 + 实时数据）==========
+function renderCPUFrame(time) {
+  if (!stressRunning) return;
+  const dims = resizeStressCanvas();
+  const { w, h } = dims;
+  const ctx = stressCtx;
+  const cx = w / 2, cy = h / 2;
+  const preset = getPreset();
+
+  // 深色拖尾
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(0, 0, w, h);
+
+  // 🔥 热力图背景 — 多层脉冲光晕
+  const pulse = 0.01 + stressIntensity * 0.007 + Math.sin(time * 0.004) * 0.004;
+  for (let b = 0; b < 3; b++) {
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * (0.4 + b * 0.2));
+    grad.addColorStop(0, 'rgba(255,30,0,' + pulse * (2 - b * 0.5) + ')');
+    grad.addColorStop(0.4, 'rgba(255,80,0,' + pulse * (1.2 - b * 0.3) + ')');
+    grad.addColorStop(0.7, 'rgba(100,0,200,' + pulse * 0.4 + ')');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // 🔥 扫描线效果
+  ctx.strokeStyle = 'rgba(255,100,30,0.06)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < h; y += 3) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // 🔥 CPU 核心活动条
+  const workerCount = Math.max(1, stressWorkerIds.length);
+  const barW = Math.min(44, (w - 60) / workerCount - 8);
+  const totalW = workerCount * (barW + 8) - 8;
+  const startX = cx - totalW / 2;
+  const barBaseY = h - 20;
+
+  for (let i = 0; i < workerCount; i++) {
+    const x = startX + i * (barW + 8);
+    const activity = 0.3 + Math.abs(Math.sin(time * 0.012 + i * 0.7)) * 0.7;
+    const barH = 30 + activity * 100 + Math.random() * 15;
+    const barY = barBaseY - barH;
+
+    // 底座
+    const hue = (time * 0.6 + i * 50) % 360;
+    ctx.fillStyle = 'rgba(20,20,40,0.6)';
+    ctx.strokeStyle = 'hsla(' + hue + ', 80%, 50%, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x - 1, barBaseY - 135, barW + 2, 135);
+    ctx.strokeRect(x - 1, barBaseY - 135, barW + 2, 135);
+
+    // 活动填充
+    const gradBar = ctx.createLinearGradient(x, barY, x, barBaseY);
+    gradBar.addColorStop(0, 'hsla(' + hue + ', 100%, 65%, 0.9)');
+    gradBar.addColorStop(0.5, 'hsla(' + (hue + 15) + ', 100%, 50%, 0.85)');
+    gradBar.addColorStop(1, 'hsla(' + hue + ', 100%, 35%, 0.9)');
+    ctx.fillStyle = gradBar;
+    ctx.fillRect(x, barY, barW, barBaseY - barY);
+
+    // 顶部光点
+    ctx.beginPath();
+    ctx.arc(x + barW / 2, barY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'hsla(' + hue + ', 100%, 80%, 0.9)';
+    ctx.fill();
+
+    // 标签
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = (barW > 20 ? '9' : '7') + 'px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('C' + i, x + barW / 2, barBaseY - 138);
+  }
+
+  // 🔥 中心 CPU 芯片
+  const chipSize = Math.min(55, w * 0.07);
+  ctx.save();
+  ctx.translate(cx, cy - 10);
+  ctx.rotate(time * 0.0008);
+
+  // 芯片本体
+  const chipGrad = ctx.createLinearGradient(-chipSize, -chipSize, chipSize, chipSize);
+  chipGrad.addColorStop(0, '#1a1a2e');
+  chipGrad.addColorStop(0.5, '#2a1a3e');
+  chipGrad.addColorStop(1, '#1a1a2e');
+  ctx.fillStyle = chipGrad;
+  ctx.fillRect(-chipSize, -chipSize, chipSize * 2, chipSize * 2);
+  ctx.strokeStyle = 'rgba(255,100,50,0.7)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-chipSize, -chipSize, chipSize * 2, chipSize * 2);
+
+  // 芯片内部网格 — 模拟核心
+  const grid = 4;
+  const cellSize = chipSize * 2 / grid;
+  for (let i = 0; i < grid; i++) {
+    for (let j = 0; j < grid; j++) {
+      const bright = 0.2 + Math.sin(time * 0.025 + i * 1.8 + j * 2.5) * 0.35;
+      const hue2 = (time * 0.4 + i * 40 + j * 30) % 360;
+      ctx.fillStyle = 'hsla(' + hue2 + ', 100%, 60%, ' + bright + ')';
+      ctx.fillRect(-chipSize + i * cellSize + 2, -chipSize + j * cellSize + 2, cellSize - 4, cellSize - 4);
+    }
+  }
+
+  // 芯片引脚
+  ctx.strokeStyle = 'rgba(200,180,100,0.4)';
+  ctx.lineWidth = 0.8;
+  const pinCount = 10;
+  for (let i = 0; i < pinCount; i++) {
+    const px = -chipSize + (chipSize * 2 / (pinCount - 1)) * i;
+    ctx.beginPath(); ctx.moveTo(px, -chipSize); ctx.lineTo(px, -chipSize - 10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px, chipSize); ctx.lineTo(px, chipSize + 10); ctx.stroke();
+  }
+  ctx.restore();
+
+  // 🔥 旋转数据环
+  const ringCount = Math.min(3, preset.workers);
+  for (let r = 0; r < ringCount; r++) {
+    const radius = 70 + r * 45;
+    const dotCount = 10 + r * 5;
+    for (let d = 0; d < dotCount; d++) {
+      const angle = (d / dotCount) * Math.PI * 2 + time * 0.0025 * (r + 1) * (r % 2 === 0 ? 1 : -1);
+      const dx = cx + Math.cos(angle) * radius;
+      const dy = (cy - 10) + Math.sin(angle) * radius;
+      const hue = (time * 0.3 + d * 28) % 360;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 1.5 + r * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'hsla(' + hue + ', 100%, 65%, ' + (0.5 + r * 0.15) + ')';
+      ctx.fill();
+    }
+  }
+
+  // 🔥 实时计算数据面板
+  if (cpuVisData.lastUpdate > 0) {
+    const panelW = 230, panelH = 100, panelX = 12, panelY = 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = 'rgba(255,100,50,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    ctx.fillStyle = 'rgba(255,180,60,0.95)';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('⚡ CPU 实时计算数据', panelX + 8, panelY + 18);
+
+    ctx.font = '9px monospace';
+    const lines = [
+      { label: '迭代轮次', value: '#' + cpuVisData.iterCount.toLocaleString(), color: 'rgba(255,255,255,0.8)' },
+      { label: '蒙特卡洛 π', value: cpuVisData.piValue.toFixed(8), color: 'rgba(100,255,180,0.85)' },
+      { label: '质数筛出', value: cpuVisData.primeCount.toLocaleString() + ' 个', color: 'rgba(100,200,255,0.85)' },
+      { label: 'SHA256', value: (cpuVisData.hashVal >>> 0).toString(16).padStart(8, '0').toUpperCase(), color: 'rgba(255,200,100,0.85)' },
+      { label: '线程数', value: stressWorkerIds.length + ' / ' + (navigator.hardwareConcurrency || '?') + ' 核满载', color: 'rgba(255,100,100,0.85)' },
+    ];
+    lines.forEach((line, i) => {
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(line.label + ':', panelX + 8, panelY + 36 + i * 14);
+      ctx.fillStyle = line.color;
+      ctx.fillText(line.value, panelX + 80, panelY + 36 + i * 14);
+    });
+  }
+
+  // 🔥 热度标签
+  const heatTexts = ['', '温', '热', '烫', '烤', '🔥', '🔥🔥', '🔥🔥🔥', '🔥🔥🔥🔥', '💀 烤机', '💀☠️ 极限'];
+  ctx.fillStyle = 'rgba(255,50,20,0.8)';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(heatTexts[stressIntensity] || '🔥', cx, cy + chipSize + 35);
+
+  // 热浪波纹
+  const waveCount = 5;
+  for (let wv = 0; wv < waveCount; wv++) {
+    const waveY = barBaseY - 140 - wv * 8;
+    ctx.beginPath();
+    ctx.moveTo(0, waveY);
+    for (let x = 0; x < w; x += 4) {
+      ctx.lineTo(x, waveY + Math.sin(x * 0.05 + time * 0.008 + wv * 1.5) * 4);
+    }
+    ctx.strokeStyle = 'rgba(255,100,30,' + (0.08 + wv * 0.02) + ')';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  stressAnimId = requestAnimationFrame(renderCPUFrame);
 }
 
 // ========== 控制 ==========
@@ -2043,17 +2243,20 @@ function startStressTest() {
     startCPUWorkers();
   }
 
+  // CPU 模式使用独立的可视化渲染
   if (stressMode === 'cpu') {
+    document.getElementById('stressOverlay').className = 'stress-overlay running';
+    stressAnimId = requestAnimationFrame(renderCPUFrame);
     if (stressCpuInterval) clearInterval(stressCpuInterval);
     stressCpuInterval = setInterval(() => {
       if (!stressRunning) { clearInterval(stressCpuInterval); return; }
       const elapsed = Math.floor((performance.now() - stressStartTime) / 1000);
       document.getElementById('stressDuration').textContent = Math.floor(elapsed / 60) + '分' + (elapsed % 60) + '秒';
       document.getElementById('stressWorkers').textContent = stressWorkerIds.length + ' 个';
-      document.getElementById('stressFps').textContent = '--';
-      document.getElementById('stressFrameTime').textContent = '--';
-      document.getElementById('stressParticles').textContent = '--';
-      document.getElementById('stressScore').textContent = '计算中';
+      document.getElementById('stressFps').textContent = stressCurrentFps || '--';
+      document.getElementById('stressFrameTime').textContent = stressFrameTimeMs ? stressFrameTimeMs.toFixed(1) + ' ms' : '--';
+      document.getElementById('stressParticles').textContent = 'SHA256 + 蒙特卡洛';
+      document.getElementById('stressScore').textContent = cpuVisData.iterCount > 0 ? cpuVisData.iterCount.toLocaleString() : '计算中';
     }, 1000);
   }
 
